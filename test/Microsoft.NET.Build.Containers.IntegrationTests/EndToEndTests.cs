@@ -1472,8 +1472,8 @@ public class EndToEndTests : IDisposable
         (var taskLog, var errors) = SetupTaskLog();
         var telemetry = new Telemetry(sourceReference, destinationReference, taskLog);
 
-        await ImagePublisher.PublishImageAsync(builtImage, sourceReference, destinationReference, taskLog, telemetry, CancellationToken.None)
-                .ConfigureAwait(false);
+        await ImagePublisher.PublishImageAsync(builtImage, sourceReference, destinationReference, false, taskLog, telemetry, CancellationToken.None)
+            .ConfigureAwait(false);
 
         // Assert the error message
         Assert.True(taskLog.HasLoggedErrors);
