@@ -6,24 +6,34 @@ using System.IO.Compression;
 
 namespace Microsoft.NET.Build.Containers.UnitTests;
 
-[TestClass]
-public class LayerReproducibilityTests
+public class LayerReproducibilityTests : IDisposable
 {
     private const string ManifestMediaType = "application/vnd.docker.distribution.manifest.v2+json";
     private static readonly DateTimeOffset ReproducibleTimestamp = DateTimeOffset.FromUnixTimeSeconds(1636374896);
+    private readonly List<string> _contentDirectories = [];
 
     private string CreateContentDirectory()
     {
-        string directory = Path.Combine(TestContext.ResultsDirectory!, Path.GetRandomFileName());
+        string directory = Path.Combine(Path.GetTempPath(), "Microsoft.NET.Build.Containers.UnitTests", Path.GetRandomFileName());
+        _contentDirectories.Add(directory);
         Directory.CreateDirectory(Path.Combine(directory, "subdirectory"));
-        File.WriteAllText(Path.Combine(directory, "app.dll"), $"some content for {TestContext.TestName}");
-        File.WriteAllText(Path.Combine(directory, "subdirectory", "app.deps.json"), $"some other content for {TestContext.TestName}");
+        File.WriteAllText(Path.Combine(directory, "app.dll"), "some content");
+        File.WriteAllText(Path.Combine(directory, "subdirectory", "app.deps.json"), "some other content");
         return directory;
     }
 
-    public TestContext TestContext { get; set; } = null!;
+    public void Dispose()
+    {
+        foreach (string directory in _contentDirectories)
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
 
-    [TestMethod]
+    [Fact]
     public void LayersBuiltFromIdenticalContentHaveTheSameDigest()
     {
         // This is the behavior the change exists for: publishing the same content twice should produce
@@ -35,20 +45,20 @@ public class LayerReproducibilityTests
         Layer firstLayer = Layer.FromDirectory(first, "/app", false, ManifestMediaType, userId: null, modificationTime: ReproducibleTimestamp);
         Layer secondLayer = Layer.FromDirectory(second, "/app", false, ManifestMediaType, userId: null, modificationTime: ReproducibleTimestamp);
 
-        Assert.AreEqual(firstLayer.Descriptor.Digest, secondLayer.Descriptor.Digest);
-        Assert.AreEqual(firstLayer.Descriptor.Size, secondLayer.Descriptor.Size);
+        Assert.Equal(firstLayer.Descriptor.Digest, secondLayer.Descriptor.Digest);
+        Assert.Equal(firstLayer.Descriptor.Size, secondLayer.Descriptor.Size);
 
         // The layer must not depend on the process that produced it, which the process id in the
         // pax extended header names would otherwise leak in.
         using FileStream compressed = File.OpenRead(firstLayer.BackingFile);
         using var decompressed = new GZipStream(compressed, CompressionMode.Decompress);
         using var text = new StreamReader(decompressed);
-        Assert.IsFalse(
+        Assert.False(
             text.ReadToEnd().Contains($"PaxHeaders.{Environment.ProcessId}", StringComparison.Ordinal),
             "The layer should not contain the current process id.");
     }
 
-    [TestMethod]
+    [Fact]
     public void LayersBuiltFromDifferentContentHaveDifferentDigests()
     {
         // The digest must still be a function of the content: pinning the timestamp must not make
@@ -57,12 +67,12 @@ public class LayerReproducibilityTests
         string second = CreateContentDirectory();
         File.WriteAllText(Path.Combine(second, "app.dll"), "some different content");
 
-        Assert.AreNotEqual(
+        Assert.NotEqual(
             Layer.FromDirectory(first, "/app", false, ManifestMediaType, userId: null, modificationTime: ReproducibleTimestamp).Descriptor.Digest,
             Layer.FromDirectory(second, "/app", false, ManifestMediaType, userId: null, modificationTime: ReproducibleTimestamp).Descriptor.Digest);
     }
 
-    [TestMethod]
+    [Fact]
     public void EveryLayerEntryCarriesTheTimestampFromSourceDateEpoch()
     {
         Layer layer = Layer.FromDirectory(
@@ -81,13 +91,13 @@ public class LayerReproducibilityTests
         while (reader.GetNextEntry() is TarEntry entry)
         {
             entries++;
-            Assert.AreEqual(ReproducibleTimestamp, entry.ModificationTime, $"Entry '{entry.Name}' has an unexpected timestamp.");
+            Assert.Equal(ReproducibleTimestamp, entry.ModificationTime);
         }
 
-        Assert.AreEqual(4, entries, "Expected the app directory, the subdirectory and the two files.");
+        Assert.Equal(4, entries);
     }
 
-    [TestMethod]
+    [Fact]
     public void LayerPreservesFileContentThatLooksLikeAPaxHeader()
     {
         byte[] expected = new byte[512];
@@ -116,7 +126,7 @@ public class LayerReproducibilityTests
             {
                 using var actual = new MemoryStream();
                 entry.DataStream!.CopyTo(actual);
-                Assert.AreSequenceEqual(expected, actual.ToArray());
+                Assert.Equal(expected, actual.ToArray());
                 return;
             }
         }

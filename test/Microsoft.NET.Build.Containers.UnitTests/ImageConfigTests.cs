@@ -55,7 +55,7 @@ public class ImageConfigTests
         Assert.NotNull(prop);
     }
 
-    [TestMethod]
+    [Fact]
     public void BuildConfigUsesProvidedCreationTime()
     {
         var createdAt = new DateTime(2021, 11, 8, 12, 34, 56, DateTimeKind.Utc);
@@ -63,8 +63,8 @@ public class ImageConfigTests
 
         JsonNode result = JsonNode.Parse(config.BuildConfig(createdAt))!;
 
-        Assert.AreEqual("2021-11-08T12:34:56.0000000Z", result["created"]?.GetValue<string>());
-        Assert.IsTrue(result["history"]!.AsArray().All(entry =>
+        Assert.Equal("2021-11-08T12:34:56.0000000Z", result["created"]?.GetValue<string>());
+        Assert.True(result["history"]!.AsArray().All(entry =>
             entry?["created"]?.GetValue<string>() == "2021-11-08T12:34:56.0000000Z"));
     }
 }
